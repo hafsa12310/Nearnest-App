@@ -21,4 +21,20 @@ void main() {
     expect(find.text('Bloom & Drape'), findsOneWidget);
     expect(find.text('Aarav Moments'), findsNothing);
   });
+  testWidgets('renders on narrow and tablet surfaces', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 780));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(const NearnestApp());
+
+    expect(find.text('Book trusted local vendors fast.'), findsOneWidget);
+    expect(find.text('Aarav Moments'), findsOneWidget);
+
+    await tester.binding.setSurfaceSize(const Size(1024, 900));
+    await tester.pumpWidget(const NearnestApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Book trusted local vendors fast.'), findsOneWidget);
+    expect(find.text('Aarav Moments'), findsOneWidget);
+  });
 }

@@ -208,9 +208,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-      );
+      final position = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium));
       setState(() {
         _userPosition = position;
         _locationStatus = 'Nearest vendors are now suggested automatically.';
@@ -228,67 +226,109 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const _HeroHeader(),
-                    const SizedBox(height: 20),
-                    TextField(
-                      onChanged: (value) => setState(() => _query = value),
-                      textInputAction: TextInputAction.search,
-                      decoration: const InputDecoration(
-                        hintText: 'Search photographer, decoration, catering...',
-                        prefixIcon: Icon(Icons.search_rounded),
-                      ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final horizontalPadding = _ResponsiveMetrics.horizontalPadding(constraints.maxWidth);
+            final useGrid = _ResponsiveMetrics.vendorColumns(constraints.maxWidth) > 1;
+
+            return CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(horizontalPadding, 16, horizontalPadding, 8),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _HeroHeader(),
+                        const SizedBox(height: 20),
+                        TextField(
+                          onChanged: (value) => setState(() => _query = value),
+                          textInputAction: TextInputAction.search,
+                          decoration: const InputDecoration(
+                            hintText: 'Search photographer, decoration, catering...',
+                            prefixIcon: Icon(Icons.search_rounded),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _NearbyLocationCard(
+                          status: _locationStatus,
+                          isLoading: _isLocating,
+                          onPressed: _suggestNearbyVendors,
+                        ),
+                        const SizedBox(height: 16),
+                        _CategoryChips(
+                          categories: _categories,
+                          selected: _category,
+                          onSelected: (category) => setState(() => _category = category),
+                        ),
+                        const SizedBox(height: 16),
+                        _BudgetFilter(
+                          values: _budget,
+                          onChanged: (values) => setState(() => _budget = values),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '${filteredVendors.length} trusted vendors available now',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 16),
-                    _NearbyLocationCard(
-                      status: _locationStatus,
-                      isLoading: _isLocating,
-                      onPressed: _suggestNearbyVendors,
-                    ),
-                    const SizedBox(height: 16),
-                    _CategoryChips(
-                      categories: _categories,
-                      selected: _category,
-                      onSelected: (category) => setState(() => _category = category),
-                    ),
-                    const SizedBox(height: 16),
-                    _BudgetFilter(
-                      values: _budget,
-                      onChanged: (values) => setState(() => _budget = values),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      '${filteredVendors.length} trusted vendors available now',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-              sliver: filteredVendors.isEmpty
-                  ? const SliverToBoxAdapter(child: _EmptyState())
-                  : SliverList.separated(
-                      itemBuilder: (context, index) {
-                        final vendor = filteredVendors[index];
-                        return VendorCard(vendor: vendor, distanceKm: _userPosition == null ? null : _distanceTo(vendor));
-                      },
-                      separatorBuilder: (_, __) => const SizedBox(height: 14),
-                      itemCount: filteredVendors.length,
-                    ),
-            ),
-          ],
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(horizontalPadding, 4, horizontalPadding, 24),
+                  sliver: filteredVendors.isEmpty
+                      ? const SliverToBoxAdapter(child: _EmptyState())
+                      : useGrid
+                          ? SliverGrid(
+                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: _ResponsiveMetrics.vendorColumns(constraints.maxWidth),
+                                crossAxisSpacing: 14,
+                                mainAxisSpacing: 14,
+                                mainAxisExtent: 300,
+                              ),
+                              delegate: SliverChildBuilderDelegate(
+                                (context, index) {
+                                  final vendor = filteredVendors[index];
+                                  return VendorCard(vendor: vendor, distanceKm: _userPosition == null ? null : _distanceTo(vendor));
+                                },
+                                childCount: filteredVendors.length,
+                              ),
+                            )
+                          : SliverList.separated(
+                              itemBuilder: (context, index) {
+                                final vendor = filteredVendors[index];
+                                return VendorCard(vendor: vendor, distanceKm: _userPosition == null ? null : _distanceTo(vendor));
+                              },
+                              separatorBuilder: (_, __) => const SizedBox(height: 14),
+                              itemCount: filteredVendors.length,
+                            ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
+  }
+}
+
+class _ResponsiveMetrics {
+  const _ResponsiveMetrics._();
+
+  static const double _maxContentWidth = 1180;
+
+  static double horizontalPadding(double width) {
+    if (width <= 420) return 14;
+    if (width <= 720) return 20;
+    final sidePadding = (width - _maxContentWidth) / 2;
+    return sidePadding > 28 ? sidePadding : 28;
+  }
+
+  static int vendorColumns(double width) {
+    if (width >= 1100) return 3;
+    if (width >= 760) return 2;
+    return 1;
   }
 }
 
@@ -313,10 +353,12 @@ class _HeroHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               const Icon(Icons.location_on_rounded, color: Colors.white),
-              const SizedBox(width: 8),
               Text('Nearby verified services', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.white)),
             ],
           ),
@@ -495,26 +537,41 @@ class VendorCard extends StatelessWidget {
                 children: vendor.tags.map((tag) => Chip(label: Text(tag), visualDensity: VisualDensity.compact)).toList(),
               ),
               const SizedBox(height: 12),
-              Row(
+              Wrap(
+                spacing: 14,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  const Icon(Icons.star_rounded, color: Color(0xFFFFB300), size: 20),
-                  Text(' ${vendor.rating}'),
-                  const SizedBox(width: 16),
-                  const Icon(Icons.bolt_rounded, color: Color(0xFF43A047), size: 20),
-                  Text(' Replies in ${vendor.responseTime}'),
-                  if (distanceKm != null) ...[
-                    const SizedBox(width: 16),
-                    const Icon(Icons.place_rounded, color: Color(0xFF6750A4), size: 20),
-                    Text(' ${distanceKm!.toStringAsFixed(1)} km'),
-                  ],
-                  const Spacer(),
-                  const Icon(Icons.chevron_right_rounded),
+                  _MetaPill(icon: Icons.star_rounded, iconColor: const Color(0xFFFFB300), label: vendor.rating.toString()),
+                  _MetaPill(icon: Icons.bolt_rounded, iconColor: const Color(0xFF43A047), label: 'Replies in ${vendor.responseTime}'),
+                  if (distanceKm != null)
+                    _MetaPill(icon: Icons.place_rounded, iconColor: const Color(0xFF6750A4), label: '${distanceKm!.toStringAsFixed(1)} km'),
                 ],
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _MetaPill extends StatelessWidget {
+  const _MetaPill({required this.icon, required this.iconColor, required this.label});
+
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: iconColor, size: 20),
+        const SizedBox(width: 4),
+        Text(label, overflow: TextOverflow.ellipsis),
+      ],
     );
   }
 }
@@ -580,83 +637,99 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(vendor.name)),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          VendorCard(vendor: vendor),
-          const SizedBox(height: 18),
-          Card(
-            elevation: 0,
-            color: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Quick secure enquiry', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 8),
-                    const Text('Only share details needed for this booking. Payments and identity documents should be handled through verified channels only.'),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _eventController,
-                      maxLength: 60,
-                      decoration: const InputDecoration(labelText: 'Event type', hintText: 'Birthday, wedding, corporate event...'),
-                      validator: (value) {
-                        final trimmed = value?.trim() ?? '';
-                        if (trimmed.length < 3) return 'Enter at least 3 characters.';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _notesController,
-                      minLines: 3,
-                      maxLines: 5,
-                      maxLength: 240,
-                      decoration: const InputDecoration(labelText: 'Need and budget', hintText: 'Date, location area, budget, and must-haves'),
-                      validator: (value) {
-                        final trimmed = value?.trim() ?? '';
-                        if (trimmed.length < 10) return 'Add a few details so the vendor can respond accurately.';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final horizontalPadding = _ResponsiveMetrics.horizontalPadding(constraints.maxWidth);
+
+          return ListView(
+            padding: EdgeInsets.fromLTRB(horizontalPadding, 20, horizontalPadding, 24),
+            children: [
+              VendorCard(vendor: vendor),
+              const SizedBox(height: 18),
+              Card(
+                elevation: 0,
+                color: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => _launchTrustedUri(Uri.parse('tel:${vendor.phone}')),
-                            icon: const Icon(Icons.call_rounded),
-                            label: const Text('Call'),
-                          ),
+                        Text('Quick secure enquiry', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 8),
+                        const Text('Only share details needed for this booking. Payments and identity documents should be handled through verified channels only.'),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _eventController,
+                          maxLength: 60,
+                          decoration: const InputDecoration(labelText: 'Event type', hintText: 'Birthday, wedding, corporate event...'),
+                          validator: (value) {
+                            final trimmed = value?.trim() ?? '';
+                            if (trimmed.length < 3) return 'Enter at least 3 characters.';
+                            return null;
+                          },
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _openMap,
-                            icon: const Icon(Icons.map_rounded),
-                            label: const Text('Map'),
-                          ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _notesController,
+                          minLines: 3,
+                          maxLines: 5,
+                          maxLength: 240,
+                          decoration: const InputDecoration(labelText: 'Need and budget', hintText: 'Date, location area, budget, and must-haves'),
+                          validator: (value) {
+                            final trimmed = value?.trim() ?? '';
+                            if (trimmed.length < 10) return 'Add a few details so the vendor can respond accurately.';
+                            return null;
+                          },
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: _submitEnquiry,
-                            icon: const Icon(Icons.lock_rounded),
-                            label: const Text('Email'),
-                          ),
+                        const SizedBox(height: 10),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final isNarrow = constraints.maxWidth < 460;
+                            final buttonWidth = isNarrow ? constraints.maxWidth : (constraints.maxWidth - 16) / 3;
+
+                            return Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                SizedBox(
+                                  width: buttonWidth,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _launchTrustedUri(Uri.parse('tel:${vendor.phone}')),
+                                    icon: const Icon(Icons.call_rounded),
+                                    label: const Text('Call'),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: buttonWidth,
+                                  child: OutlinedButton.icon(
+                                    onPressed: _openMap,
+                                    icon: const Icon(Icons.map_rounded),
+                                    label: const Text('Map'),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: buttonWidth,
+                                  child: FilledButton.icon(
+                                    onPressed: _submitEnquiry,
+                                    icon: const Icon(Icons.lock_rounded),
+                                    label: const Text('Email'),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
