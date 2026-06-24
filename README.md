@@ -1,6 +1,6 @@
 # Nearnest App
 
-Nearnest is a minimal, modern Flutter app for iOS and Android that helps users discover and contact trusted local vendors for urgent services like photography, home decoration, catering, makeup, and event planning.
+Nearnest is a minimal, modern Flutter app for iOS and Android that helps users discover and contact trusted local vendors for urgent services like photography, home decoration, catering, event planning etc.
 
 ## Highlights
 
