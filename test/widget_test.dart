@@ -9,6 +9,7 @@ void main() {
     expect(find.text('Book trusted local vendors fast.'), findsOneWidget);
     expect(find.text('Aarav Moments'), findsOneWidget);
     expect(find.byIcon(Icons.search_rounded), findsOneWidget);
+    expect(find.text('Nearby'), findsOneWidget);
   });
 
   testWidgets('filters vendors by category', (tester) async {

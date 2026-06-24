@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 void main() {
@@ -42,6 +43,8 @@ class Vendor {
     required this.location,
     required this.phone,
     required this.email,
+    required this.latitude,
+    required this.longitude,
     required this.tags,
     this.verified = true,
   });
@@ -55,6 +58,8 @@ class Vendor {
   final String location;
   final String phone;
   final String email;
+  final double latitude;
+  final double longitude;
   final List<String> tags;
   final bool verified;
 }
@@ -70,6 +75,8 @@ const List<Vendor> vendors = [
     location: 'Downtown',
     phone: '+15550101001',
     email: 'bookings@aaravmoments.example',
+    latitude: 40.758,
+    longitude: -73.9855,
     tags: ['Urgent booking', 'Edited photos', '4K video'],
   ),
   Vendor(
@@ -82,6 +89,8 @@ const List<Vendor> vendors = [
     location: 'North Side',
     phone: '+15550101002',
     email: 'hello@bloomdrape.example',
+    latitude: 40.7851,
+    longitude: -73.9683,
     tags: ['Flowers', 'Balloon wall', 'Theme setup'],
   ),
   Vendor(
@@ -94,6 +103,8 @@ const List<Vendor> vendors = [
     location: 'West Market',
     phone: '+15550101003',
     email: 'orders@saffronbites.example',
+    latitude: 40.742,
+    longitude: -74.0048,
     tags: ['Veg options', 'Halal', 'Desserts'],
   ),
   Vendor(
@@ -106,6 +117,8 @@ const List<Vendor> vendors = [
     location: 'City Center',
     phone: '+15550101004',
     email: 'care@glowstudio.example',
+    latitude: 40.7306,
+    longitude: -73.9866,
     tags: ['At-home', 'Hair styling', 'Trial available'],
   ),
   Vendor(
@@ -118,6 +131,8 @@ const List<Vendor> vendors = [
     location: 'East Avenue',
     phone: '+15550101005',
     email: 'team@planswift.example',
+    latitude: 40.7527,
+    longitude: -73.9772,
     tags: ['Vendor bundle', 'Timeline', 'Guest desk'],
   ),
 ];
@@ -133,12 +148,15 @@ class _HomeScreenState extends State<HomeScreen> {
   String _query = '';
   String _category = 'All';
   RangeValues _budget = const RangeValues(50, 350);
+  Position? _userPosition;
+  bool _isLocating = false;
+  String _locationStatus = 'Use location to sort vendors by distance.';
 
   List<String> get _categories => ['All', ...{for (final v in vendors) v.category}];
 
   List<Vendor> get _filteredVendors {
     final lowerQuery = _query.trim().toLowerCase();
-    return vendors.where((vendor) {
+    final filtered = vendors.where((vendor) {
       final matchesQuery = lowerQuery.isEmpty ||
           vendor.name.toLowerCase().contains(lowerQuery) ||
           vendor.category.toLowerCase().contains(lowerQuery) ||
@@ -147,6 +165,59 @@ class _HomeScreenState extends State<HomeScreen> {
       final matchesBudget = vendor.priceFrom >= _budget.start && vendor.priceFrom <= _budget.end;
       return matchesQuery && matchesCategory && matchesBudget;
     }).toList();
+
+    if (_userPosition != null) {
+      filtered.sort((a, b) => _distanceTo(a).compareTo(_distanceTo(b)));
+    }
+
+    return filtered;
+  }
+
+  double _distanceTo(Vendor vendor) {
+    final position = _userPosition;
+    if (position == null) return double.infinity;
+    return Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          vendor.latitude,
+          vendor.longitude,
+        ) /
+        1000;
+  }
+
+  Future<void> _suggestNearbyVendors() async {
+    setState(() {
+      _isLocating = true;
+      _locationStatus = 'Checking location permission...';
+    });
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() => _locationStatus = 'Turn on location services to see nearest vendors first.');
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        setState(() => _locationStatus = 'Location permission denied. Showing vendors by rating and relevance.');
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium));
+      setState(() {
+        _userPosition = position;
+        _locationStatus = 'Nearest vendors are now suggested automatically.';
+      });
+    } catch (_) {
+      setState(() => _locationStatus = 'Unable to read location right now. Showing default vendor order.');
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
   }
 
   @override
@@ -174,6 +245,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    _NearbyLocationCard(
+                      status: _locationStatus,
+                      isLoading: _isLocating,
+                      onPressed: _suggestNearbyVendors,
+                    ),
+                    const SizedBox(height: 16),
                     _CategoryChips(
                       categories: _categories,
                       selected: _category,
@@ -198,7 +275,10 @@ class _HomeScreenState extends State<HomeScreen> {
               sliver: filteredVendors.isEmpty
                   ? const SliverToBoxAdapter(child: _EmptyState())
                   : SliverList.separated(
-                      itemBuilder: (context, index) => VendorCard(vendor: filteredVendors[index]),
+                      itemBuilder: (context, index) {
+                        final vendor = filteredVendors[index];
+                        return VendorCard(vendor: vendor, distanceKm: _userPosition == null ? null : _distanceTo(vendor));
+                      },
                       separatorBuilder: (_, __) => const SizedBox(height: 14),
                       itemCount: filteredVendors.length,
                     ),
@@ -252,6 +332,43 @@ class _HeroHeader extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white.withOpacity(0.88)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _NearbyLocationCard extends StatelessWidget {
+  const _NearbyLocationCard({required this.status, required this.isLoading, required this.onPressed});
+
+  final String status;
+  final bool isLoading;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+              child: isLoading
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.near_me_rounded),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(status)),
+            TextButton.icon(
+              onPressed: isLoading ? null : onPressed,
+              icon: const Icon(Icons.my_location_rounded),
+              label: const Text('Nearby'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -320,9 +437,10 @@ class _BudgetFilter extends StatelessWidget {
 }
 
 class VendorCard extends StatelessWidget {
-  const VendorCard({required this.vendor, super.key});
+  const VendorCard({required this.vendor, this.distanceKm, super.key});
 
   final Vendor vendor;
+  final double? distanceKm;
 
   @override
   Widget build(BuildContext context) {
@@ -382,6 +500,11 @@ class VendorCard extends StatelessWidget {
                   const SizedBox(width: 16),
                   const Icon(Icons.bolt_rounded, color: Color(0xFF43A047), size: 20),
                   Text(' Replies in ${vendor.responseTime}'),
+                  if (distanceKm != null) ...[
+                    const SizedBox(width: 16),
+                    const Icon(Icons.place_rounded, color: Color(0xFF6750A4), size: 20),
+                    Text(' ${distanceKm!.toStringAsFixed(1)} km'),
+                  ],
                   const Spacer(),
                   const Icon(Icons.chevron_right_rounded),
                 ],
@@ -416,14 +539,25 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
   }
 
   Future<void> _launchTrustedUri(Uri uri) async {
-    if (uri.scheme != 'tel' && uri.scheme != 'mailto') {
+    if (uri.scheme != 'tel' && uri.scheme != 'mailto' && uri.scheme != 'https') {
       _showMessage('Unsupported contact method blocked for your safety.');
+      return;
+    }
+
+    if (uri.scheme == 'https' && uri.host != 'www.google.com') {
+      _showMessage('Only trusted map links are allowed.');
       return;
     }
 
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       _showMessage('Could not open this contact method on your device.');
     }
+  }
+
+  void _openMap() {
+    final vendor = widget.vendor;
+    final query = Uri.encodeComponent('${vendor.latitude},${vendor.longitude} ${vendor.name}');
+    _launchTrustedUri(Uri.parse('https://www.google.com/maps/search/?api=1&query=$query'));
   }
 
   void _submitEnquiry() {
@@ -497,12 +631,20 @@ class _VendorDetailsScreenState extends State<VendorDetailsScreen> {
                             label: const Text('Call'),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _openMap,
+                            icon: const Icon(Icons.map_rounded),
+                            label: const Text('Map'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: FilledButton.icon(
                             onPressed: _submitEnquiry,
                             icon: const Icon(Icons.lock_rounded),
-                            label: const Text('Email safely'),
+                            label: const Text('Email'),
                           ),
                         ),
                       ],
@@ -548,3 +690,5 @@ IconData _iconForCategory(String category) {
     _ => Icons.handshake_rounded,
   };
 }
+
+// Uses the platform geolocation permission flow; no precise location is stored.
