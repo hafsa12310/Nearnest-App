@@ -208,7 +208,9 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition(locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium));
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+      );
       setState(() {
         _userPosition = position;
         _locationStatus = 'Nearest vendors are now suggested automatically.';
